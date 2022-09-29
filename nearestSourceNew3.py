@@ -47,7 +47,7 @@ def MSCMeanForAllFrames(indata, blockLength):
         CxyMean.append(Cxy_mean)
         sample_index = sample_index + blockLength
         block_length = block_length + blockLength
-        if sample_index >= int(len(data)):
+        if sample_index >= int(len(indata)):
             finished = True
     cleanedList = [x for x in CxyMean if x == x]        
     return np.mean(cleanedList)        

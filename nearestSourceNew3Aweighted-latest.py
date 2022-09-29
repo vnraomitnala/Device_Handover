@@ -23,16 +23,33 @@ import soundfile as sf
 from numpy import pi, polymul
 from scipy.signal import bilinear
 from scipy.signal import savgol_filter
-import skfda
+from pandas import read_csv
+from numpy import mean
+from sklearn.metrics import mean_squared_error
 
-SAMPLE_RATE = 48000
+
+SAMPLE_RATE = 16000
 blockLength =  2**14
-freqs = np.arange(0, 1 + 2**14 / 2) * 48000 / 2**14
+freqs = np.arange(0, 1 + 2**14 / 2) * 16000 / 2**14
 
-dataset = {"speaker": [], "microphone": [], "coherence1": [], "micList1": []  
-           ,"coherence2": [], "micList2": []}
+dataset = {"speaker": [], "microphone": [], "coherence1": [] ,"coherence2": []}
 
-directory = os.fsencode('C://Users//Vijaya//Documents//MobaXterm//home//tmp//3d')
+directory = os.fsencode('C://Users//Vijaya//Documents//MobaXterm//home//tmp//3d//')
+
+
+def Smoothening(X):
+    window = 3
+    history = [X[i] for i in range(window)]
+    test = [X[i] for i in range(window, len(X))]
+    predictions = list()
+    # walk forward over time steps in test
+    for t in range(len(test)):
+    	length = len(history)
+    	yhat = mean([history[i] for i in range(length-window,length)])
+    	obs = test[t]
+    	predictions.append(yhat)
+    	history.append(obs)
+    return predictions   
 
 def A_weighting(fs):
     """Design of an A-weighting filter.
@@ -84,7 +101,7 @@ def MSCMeanForAllFrames(indata, blockLength, fs):
     while not finished:
         b, a = A_weighting(fs)
         dataBlockL = indata[block_length+sample_index :,0]
-        dataBlockR = indata[block_length+sample_index :,5]
+        dataBlockR = indata[block_length+sample_index :,1]
         
         y = lfilter(b, a, dataBlockL)
         mean_blockL = np.mean(10**(a/10))
@@ -93,17 +110,27 @@ def MSCMeanForAllFrames(indata, blockLength, fs):
         mean_blockR = np.mean(10**(a/10))
         
         if (mean_blockL) > 0.001 and (mean_blockR) > 0.001:
-            #dataBlockL =  savgol_filter(dataBlockL, 5, 2, mode='nearest')
-            #dataBlockR =  savgol_filter(dataBlockR, 5, 2, mode='nearest')
-            f, Cxy = signal.coherence(dataBlockR, dataBlockL, 16000, nperseg=1024)
-            Cxy_mean = np.mean(Cxy)
-            CxyMean.append(Cxy_mean)
-            sample_index = sample_index + blockLength
-            block_length = block_length + blockLength
-            if sample_index >= int(len(data)):
-                finished = True
-        cleanedList = [x for x in CxyMean if x == x]        
-    return round(np.mean(cleanedList),3)      
+            if dataBlockL.size > 0 and dataBlockR.size > 0:
+                kernel_size = 10
+                kernel = np.ones(kernel_size) / kernel_size
+                dataBlockL = np.convolve(dataBlockL, kernel, mode='same')
+                dataBlockR = np.convolve(dataBlockR, kernel, mode='same')
+               #dataBlockL =  savgol_filter(dataBlockL, 5, 2, mode='nearest')
+                #dataBlockR =  savgol_filter(dataBlockR, 5, 2, mode='nearest')
+                f, Cxy = signal.coherence(dataBlockR, dataBlockL, 16000, nperseg=1024)
+                if len(Cxy) > 0:
+                   Cxy = Smoothening(Cxy)
+                cleanedList2 = [x for x in Cxy if x == x]   
+                if len(cleanedList2) > 0:
+                    Cxy_mean = np.mean(cleanedList2)
+                CxyMean.append(Cxy_mean)
+        sample_index = sample_index + blockLength
+        block_length = block_length + blockLength
+        if sample_index >= int(len(data)):
+            finished = True
+        cleanedList = [x for x in CxyMean if x == x]   
+
+    return round(np.mean(cleanedList),2)     
 
 
 def isStringMatched (index, fileStr, indata):
@@ -137,10 +164,7 @@ for root, dirs, files in os.walk(directory):
               file_index=0
               coherence1 = []
               coherence2 = []
-              mic1 = []
-              mic2 = []
               for file in files:
-                  print(file_index)
                   str = os.path.join(root, file).decode("utf-8")
                   if (str.find('speech') != -1 ):
                       if index == 0:
@@ -156,10 +180,8 @@ for root, dirs, files in os.walk(directory):
                           print(mscMeanCurrent)
                           if file_index == 0:
                              coherence1.append(mscMeanCurrent)
-                             mic1.append('01')
                           else:
                              coherence2.append(mscMeanCurrent)
-                             mic2.append('02')
                       
                           if mscMeanCurrent > mscPrev:
                              mscPrev = mscMeanCurrent                                                         
@@ -184,16 +206,12 @@ for root, dirs, files in os.walk(directory):
                  dataset["speaker"].append(labels[1])
                  dataset["coherence1"].append(coherence1[0])
                  dataset["coherence2"].append(coherence2[0])
-                 dataset["micList1"].append(mic1[0])
-                 dataset["micList2"].append(mic2[0])
                  labelsGlobal.append(labels[0])
                  labelsGlobal.append(labels[1])
-          tmp.append(dataset)
      
-
 print(dataset)
 
-with open ('C:/Users/Vijaya/PhD/Audio_DataSetmsc_3d_1.0.pickle', 'wb' ) as f:
+with open ('C:/Users/Vijaya/PhD/Audio_DataSetmsc_3d_with_filter_smooth_0.8.pickle', 'wb' ) as f:
     pickle.dump(dataset, f)  
 
 
